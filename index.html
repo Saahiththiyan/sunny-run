@@ -130,7 +130,6 @@
         document.body.classList.add('game-loaded');
         btn.disabled = false;
         status.textContent = touch ? 'Tap Start to play' : 'Press Enter or click Start';
-        btn.focus({ preventScroll: true });
       }, { once: true });
       const start = () => {
         if (btn.disabled || document.body.classList.contains('playing')) return;
