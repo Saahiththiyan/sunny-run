@@ -27,7 +27,7 @@
     canvas { display: block; touch-action: none; }
 
     #rotate {
-      display: none; position: fixed; inset: 0; z-index: 10;
+      display: none; position: fixed; inset: 0; z-index: 30;
       flex-direction: column; align-items: center; justify-content: center; gap: 18px;
       padding: 24px; box-sizing: border-box; text-align: center;
       background: #1d2b3a; color: #fff; font: 600 20px/1.4 system-ui, sans-serif;
@@ -45,10 +45,70 @@
     @media (orientation: portrait) and (pointer: coarse) {
       body:not(.play-anyway) #rotate { display: flex; }
     }
+
+    /* ---------- start menu (also the loading screen) ---------- */
+    #menu {
+      position: fixed; inset: 0; z-index: 20;
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: center; justify-items: center; gap: 2vw;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+               max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      box-sizing: border-box;
+      /* sky-coloured veil: looks like sky while loading, lets the game show through once it's ready */
+      background: linear-gradient(180deg, rgba(126, 200, 245, 0.92), rgba(255, 227, 184, 0.88));
+      -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+      transition: opacity 0.45s ease, visibility 0.45s;
+    }
+    body.game-loaded #menu { background: linear-gradient(180deg, rgba(126, 200, 245, 0.55), rgba(255, 227, 184, 0.6)); }
+    body.playing #menu { opacity: 0; visibility: hidden; pointer-events: none; }
+    #menu .left { display: flex; flex-direction: column; align-items: center; gap: 1.5vh; min-width: 0; }
+    #menu img { display: block; max-width: 100%; height: auto; -webkit-user-drag: none; user-select: none; }
+    #menu .logo { max-height: 50vh; width: auto; animation: float 3.2s ease-in-out infinite; }
+    #menu .couple { max-height: 82vh; width: auto; animation: float 4s ease-in-out infinite 0.6s; }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+    #start {
+      border: 0; padding: 0; background: none; cursor: pointer;
+      -webkit-tap-highlight-color: transparent; transition: transform 0.15s ease, opacity 0.3s, filter 0.3s;
+    }
+    #start img { max-height: 22vh; width: auto; }
+    #start:disabled { cursor: default; opacity: 0.55; filter: grayscale(0.35); }
+    #start:not(:disabled) { animation: pulse 1.6s ease-in-out infinite; }
+    #start:not(:disabled):hover { transform: scale(1.04); }
+    #start:not(:disabled):active { transform: scale(0.96); }
+    #start:focus-visible { outline: 3px solid #fff; outline-offset: 4px; border-radius: 40px; }
+    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
+    #status {
+      margin: 0; min-height: 1.4em; color: #5a1e24; text-align: center;
+      font: 600 clamp(14px, 2.2vh, 18px)/1.4 system-ui, sans-serif;
+    }
+    #status .dots::after { content: ''; animation: dots 1.2s steps(4) infinite; }
+    @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+
+    /* upright screens: stack everything */
+    @media (orientation: portrait) {
+      #menu { grid-template-columns: 1fr; grid-template-rows: auto auto; align-content: center; }
+      #menu .logo { max-height: 26vh; }
+      #menu .couple { max-height: 34vh; order: -1; }
+      #start img { max-height: 12vh; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #menu .logo, #menu .couple, #start:not(:disabled), #status .dots::after { animation: none; }
+    }
   </style>
 </head>
 <body>
   <div id="wrap"><div id="game"></div></div>
+  <main id="menu" aria-label="Sunny Run start menu">
+    <div class="left">
+      <img class="logo" src="assets/ui/logo.webp" alt="Sunny Run" width="755" height="561" />
+      <button id="start" type="button" disabled aria-describedby="status">
+        <img src="assets/ui/start.webp" alt="Start" width="745" height="323" />
+      </button>
+      <p id="status" role="status">Loading<span class="dots"></span></p>
+    </div>
+    <img class="couple" src="assets/ui/couple.webp" alt="" width="842" height="669" />
+  </main>
   <div id="rotate">
     <div class="phone"></div>
     <div>Turn your phone sideways to play</div>
@@ -60,9 +120,34 @@
     document.addEventListener('gesturestart', (e) => e.preventDefault());
     document.addEventListener('dblclick', (e) => e.preventDefault());
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
-  <script src="assets/sprites-data.js"></script>
-  <script src="assets/background-data.js"></script>
-  <script src="game.js"></script>
+  <script>
+    // Start menu: enabled once game.js says the world is built ('game-ready')
+    (() => {
+      const btn = document.getElementById('start');
+      const status = document.getElementById('status');
+      const touch = matchMedia('(pointer: coarse)').matches;
+      window.addEventListener('game-ready', () => {
+        document.body.classList.add('game-loaded');
+        btn.disabled = false;
+        status.textContent = touch ? 'Tap Start to play' : 'Press Enter or click Start';
+        btn.focus({ preventScroll: true });
+      }, { once: true });
+      const start = () => {
+        if (btn.disabled || document.body.classList.contains('playing')) return;
+        document.body.classList.add('playing');
+        window.startSunnyRun();
+      };
+      btn.addEventListener('click', start);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { if (!btn.disabled && !document.body.classList.contains('playing')) { e.preventDefault(); start(); } }
+      });
+    })();
+  </script>
+  <!-- deferred so the menu shows straight away while these download -->
+  <script defer src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script defer src="assets/ui-data.js"></script>
+  <script defer src="assets/sprites-data.js"></script>
+  <script defer src="assets/background-data.js"></script>
+  <script defer src="game.js"></script>
 </body>
 </html>

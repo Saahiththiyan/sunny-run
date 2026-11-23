@@ -10,6 +10,10 @@ const GROUND_Y = VIEW_H - 70;           // top of the ground strip
 const BOY_X = WORLD_W - 500;            // where he waits at the end of the level
 const MEET_GAP = 95;                    // how close she stands to him when they meet
 
+// The start menu lives in index.html; it calls window.startSunnyRun() when Start is pressed.
+// Restarts (R / tap after winning) skip the menu because this stays true.
+let gameStarted = false;
+
 // All sheets share one cell size (see assets/sprites.json) so the hitbox stays put when switching.
 const SPRITE = {
   frameWidth: 240,
@@ -86,6 +90,7 @@ class MainScene extends Phaser.Scene {
       })));
     const addImage = (k, img) => this.textures.addImage(k, img);
     loads.push(load('landscape', window.BG.landscape, addImage));
+    loads.push(load('together', window.UI.together, addImage));
     window.BG.clouds.forEach((src, i) => loads.push(load(`cloud-${i}`, src, addImage)));
     Object.entries(window.BG.trees).forEach(([name, src]) => loads.push(load(`tree-${name}`, src, addImage)));
     Promise.all(loads).then(() => this.buildWorld());
@@ -209,6 +214,7 @@ class MainScene extends Phaser.Scene {
     this.addFullscreenButton();
 
     this.ready = true;
+    window.dispatchEvent(new Event('game-ready'));   // lets the start menu enable its Start button
   }
 
   // ---------- background ----------
@@ -385,21 +391,24 @@ class MainScene extends Phaser.Scene {
       scale: { start: 0.7, end: 0 }, alpha: { start: 1, end: 0 },
       lifespan: 1800, frequency: 120, quantity: 2,
     }).setDepth(6);
-    const big = this.add.image(midX, GROUND_Y - 200, 'heart').setScale(0).setDepth(7);
-    this.tweens.add({ targets: big, scale: 2.2, y: GROUND_Y - 270, duration: 900, ease: 'Back.out' });
-    this.tweens.add({ targets: big, scale: 2.5, duration: 500, yoyo: true, repeat: -1, delay: 900, ease: 'Sine.inOut' });
 
-    const style = { fontFamily: 'system-ui, sans-serif', color: '#ffffff', stroke: '#1d2b3a', align: 'center' };
-    this.add.text(VIEW_W / 2, 95, 'Together at last!', { ...style, fontSize: '52px', strokeThickness: 8 })
-      .setOrigin(0.5).setScrollFactor(0).setDepth(30);
-    this.add.text(VIEW_W / 2, 145, `All ${this.totalHearts} hearts collected  ·  press R or tap to play again`, { ...style, fontSize: '20px', strokeThickness: 5 })
-      .setOrigin(0.5).setScrollFactor(0).setDepth(30);
+    // "Together at Last" art pops in, then gently floats
+    const titleScale = 190 / this.textures.get('together').getSourceImage().height;
+    const title = this.add.image(VIEW_W / 2, 118, 'together').setScale(0).setScrollFactor(0).setDepth(30);
+    this.tweens.add({ targets: title, scale: titleScale, duration: 700, ease: 'Back.out' });
+    this.tweens.add({ targets: title, y: 110, duration: 1600, yoyo: true, repeat: -1, delay: 700, ease: 'Sine.inOut' });
+
+    const style = { fontFamily: 'system-ui, sans-serif', color: '#ffffff', stroke: '#7a1f2b', align: 'center' };
+    const hint = this.add.text(VIEW_W / 2, 232, `All ${this.totalHearts} hearts collected  ·  tap or press R to play again`, { ...style, fontSize: '20px', strokeThickness: 5 })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(30).setAlpha(0);
+    this.tweens.add({ targets: hint, alpha: 1, duration: 500, delay: 600 });
     this.time.delayedCall(800, () => this.input.once('pointerdown', () => this.scene.restart()));
   }
 
   update() {
     if (this.ready) this.updateBackground();
-    if (!this.ready || this.won) {
+    if (!this.ready || this.won || !gameStarted) {
+      if (this.ready) this.player.setAccelerationX(0);
       if (this.won) this.player.setVelocityX(0);
       return;
     }
@@ -444,6 +453,12 @@ class MainScene extends Phaser.Scene {
     }
   }
 }
+
+window.startSunnyRun = () => {
+  gameStarted = true;
+  const scene = window.game.scene.getScene('main');
+  if (scene && scene.input && scene.input.keyboard) scene.input.keyboard.resetKeys();   // the Enter/Space that started it doesn't also jump
+};
 
 window.game = new Phaser.Game({
   type: Phaser.AUTO,
