@@ -1,0 +1,69 @@
+{
+ "landscape": {
+  "file": "landscape.jpg",
+  "width": 3000,
+  "height": 263
+ },
+ "clouds": [
+  {
+   "file": "cloud-1.png",
+   "width": 413,
+   "height": 98
+  },
+  {
+   "file": "cloud-2.png",
+   "width": 121,
+   "height": 29
+  },
+  {
+   "file": "cloud-3.png",
+   "width": 309,
+   "height": 101
+  },
+  {
+   "file": "cloud-4.png",
+   "width": 91,
+   "height": 20
+  },
+  {
+   "file": "cloud-5.png",
+   "width": 174,
+   "height": 44
+  },
+  {
+   "file": "cloud-6.png",
+   "width": 273,
+   "height": 86
+  },
+  {
+   "file": "cloud-7.png",
+   "width": 119,
+   "height": 28
+  },
+  {
+   "file": "cloud-8.png",
+   "width": 296,
+   "height": 95
+  }
+ ],
+ "trees": [
+  {
+   "name": "gulmohar",
+   "file": "tree-gulmohar.png",
+   "width": 573,
+   "height": 354
+  },
+  {
+   "name": "mango",
+   "file": "tree-mango.png",
+   "width": 458,
+   "height": 373
+  },
+  {
+   "name": "pine",
+   "file": "tree-pine.png",
+   "width": 298,
+   "height": 377
+  }
+ ]
+}

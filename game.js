@@ -38,6 +38,17 @@ const IDLE_SEQUENCE = [
   [3, 200], [4, 300], [5, 1100], [4, 200], [3, 200],
 ];
 
+// Background layers, all cut from assets/background-sheet-original.webp (see assets/bg/background.json).
+const BG = {
+  landscapeHeight: 263,                  // height of landscape.jpg
+  landscapeScroll: 0.12,                 // far hills move slowly
+  clouds: 6,                             // how many drifting clouds
+  backTrees: { scroll: 0.55, scale: [0.3, 0.4], gap: [240, 420], tint: 0xc9d6e3 },   // hazy row further back
+  frontTrees: { scale: [0.62, 0.78], gap: [520, 860] },                              // trees she runs past
+  treeKinds: ['gulmohar', 'mango', 'pine'],
+  seed: 'sunny-run',                     // same tree layout every play
+};
+
 // His waiting loop: looks around, notices something (!), closes his eyes and smiles.
 const BOY_SEQUENCE = [
   [0, 900], [1, 900], [2, 700], [1, 300], [0, 700],
@@ -61,19 +72,22 @@ class MainScene extends Phaser.Scene {
     this.score = 0;
     if (!this.textures.exists('heart')) this.makeTextures();
 
-    // Sprite sheets are embedded as data URIs so the game works by double-clicking index.html.
-    const loads = Object.entries(SPRITE.sheets).map(([key, sheet]) => new Promise((resolve) => {
+    // Images are embedded as data URIs so the game works by double-clicking index.html.
+    const load = (key, src, addTexture) => new Promise((resolve) => {
       if (this.textures.exists(key)) return resolve();   // already loaded (restart)
       const img = new Image();
-      img.onload = () => {
-        this.textures.addSpriteSheet(key, img, {
-          frameWidth: sheet.frameWidth || SPRITE.frameWidth,
-          frameHeight: sheet.frameHeight || SPRITE.frameHeight,
-        });
-        resolve();
-      };
-      img.src = sheet.data();
-    }));
+      img.onload = () => { addTexture(key, img); resolve(); };
+      img.src = src;
+    });
+    const loads = Object.entries(SPRITE.sheets).map(([key, sheet]) => load(key, sheet.data(), (k, img) =>
+      this.textures.addSpriteSheet(k, img, {
+        frameWidth: sheet.frameWidth || SPRITE.frameWidth,
+        frameHeight: sheet.frameHeight || SPRITE.frameHeight,
+      })));
+    const addImage = (k, img) => this.textures.addImage(k, img);
+    loads.push(load('landscape', window.BG.landscape, addImage));
+    window.BG.clouds.forEach((src, i) => loads.push(load(`cloud-${i}`, src, addImage)));
+    Object.entries(window.BG.trees).forEach(([name, src]) => loads.push(load(`tree-${name}`, src, addImage)));
     Promise.all(loads).then(() => this.buildWorld());
   }
 
@@ -81,34 +95,14 @@ class MainScene extends Phaser.Scene {
   makeTextures() {
     const g = this.make.graphics({ x: 0, y: 0, add: false });
 
-    // far hills
-    g.clear();
-    g.fillStyle(0x9fd3c7, 1);
-    for (let i = 0; i < 5; i++) g.fillEllipse(110 + i * 200, 220, 320, 260);
-    g.fillRect(0, 220, 1000, 120);
-    g.generateTexture('hillsFar', 1000, 300);
-
-    // near hills
-    g.clear();
-    g.fillStyle(0x5fb38a, 1);
-    for (let i = 0; i < 4; i++) g.fillEllipse(130 + i * 250, 200, 300, 200);
-    g.fillRect(0, 200, 1000, 100);
-    g.generateTexture('hillsNear', 1000, 260);
-
     // ground tile
     g.clear();
     g.fillStyle(0x8a5a3b, 1).fillRect(0, 0, 128, 128);
-    g.fillStyle(0x4caf50, 1).fillRect(0, 0, 128, 18);
-    g.fillStyle(0x3e8e41, 1).fillRect(0, 18, 128, 6);
+    g.fillStyle(0x7cb342, 1).fillRect(0, 0, 128, 18);
+    g.fillStyle(0x558b2f, 1).fillRect(0, 18, 128, 6);
     g.fillStyle(0x6e4630, 1);
     [[20, 50], [80, 70], [45, 100], [110, 40]].forEach(([x, y]) => g.fillCircle(x, y, 6));
     g.generateTexture('ground', 128, 128);
-
-    // cloud
-    g.clear();
-    g.fillStyle(0xffffff, 0.95);
-    g.fillCircle(40, 40, 28).fillCircle(75, 30, 34).fillCircle(110, 42, 26).fillRect(40, 40, 70, 28);
-    g.generateTexture('cloud', 150, 80);
 
     // heart pickup
     g.clear();
@@ -130,21 +124,13 @@ class MainScene extends Phaser.Scene {
   // ---------- world ----------
   buildWorld() {
 
-    // sky
-    const sky = this.add.graphics().setScrollFactor(0);
-    sky.fillGradientStyle(0x7ec8f5, 0x7ec8f5, 0xffe3b8, 0xffe3b8, 1);
-    sky.fillRect(0, 0, VIEW_W, VIEW_H);
-    this.add.circle(780, 110, 48, 0xfff3a0).setScrollFactor(0);
-
-    // parallax layers (tileSprites fixed to camera, scrolled manually)
-    this.clouds = this.add.tileSprite(0, 50, VIEW_W, 80, 'cloud').setOrigin(0, 0).setScrollFactor(0).setAlpha(0.9);
-    this.far = this.add.tileSprite(0, GROUND_Y - 280, VIEW_W, 300, 'hillsFar').setOrigin(0, 0).setScrollFactor(0);
-    this.near = this.add.tileSprite(0, GROUND_Y - 200, VIEW_W, 260, 'hillsNear').setOrigin(0, 0).setScrollFactor(0);
+    this.buildBackground();
 
     // ground (physics)
     this.add.tileSprite(0, GROUND_Y, WORLD_W, VIEW_H - GROUND_Y, 'ground').setOrigin(0, 0);
     const groundBody = this.add.zone(WORLD_W / 2, GROUND_Y + 50, WORLD_W, 100);
     this.physics.add.existing(groundBody, true);
+    this.buildFrontTrees();
 
     // player
     this.anims.create({
@@ -223,6 +209,63 @@ class MainScene extends Phaser.Scene {
     this.addFullscreenButton();
 
     this.ready = true;
+  }
+
+  // ---------- background ----------
+  // Far to near: painted sky + hills (tiles forever), drifting clouds, a hazy row of small trees.
+  buildBackground() {
+    const rnd = new Phaser.Math.RandomDataGenerator([BG.seed]);
+
+    // sky + hills: fills the screen down to just behind the ground; mirrored tile so it never ends
+    const s = (GROUND_Y + 30) / BG.landscapeHeight;
+    this.landscapeScale = s;
+    this.landscape = this.add.tileSprite(0, 0, VIEW_W, BG.landscapeHeight * s, 'landscape')
+      .setOrigin(0, 0).setScrollFactor(0);
+    this.landscape.tileScaleX = this.landscape.tileScaleY = s;
+
+    // clouds: each drifts at its own speed; bigger ones are "closer" so they move more with the camera
+    this.cloudSprites = [];
+    const cloudKeys = window.BG.clouds.map((_, i) => `cloud-${i}`);
+    for (let i = 0; i < BG.clouds; i++) {
+      const scale = rnd.realInRange(0.45, 0.85);
+      const c = this.add.image(0, rnd.between(25, 170), rnd.pick(cloudKeys))
+        .setOrigin(0.5, 0.5).setScale(scale).setScrollFactor(0).setAlpha(0.95);
+      c.baseX = rnd.between(0, VIEW_W + 600);
+      c.parallax = 0.08 + scale * 0.2;
+      c.drift = rnd.realInRange(6, 16);      // px per second
+      this.cloudSprites.push(c);
+    }
+
+    // hazy trees further back, scrolling slower than the ground
+    const { scroll, scale, gap, tint } = BG.backTrees;
+    const span = (WORLD_W - VIEW_W) * scroll + VIEW_W + 300;
+    for (let x = rnd.between(0, gap[0]); x < span; x += rnd.between(gap[0], gap[1])) {
+      this.add.image(x, GROUND_Y + 4, `tree-${rnd.pick(BG.treeKinds)}`)
+        .setOrigin(0.5, 1).setScale(rnd.realInRange(scale[0], scale[1]))
+        .setFlipX(rnd.frac() < 0.5).setTint(tint).setScrollFactor(scroll);
+    }
+  }
+
+  // full-size trees standing on the ground, behind the characters and hearts
+  buildFrontTrees() {
+    const rnd = new Phaser.Math.RandomDataGenerator([BG.seed + '-front']);
+    const { scale, gap } = BG.frontTrees;
+    const tree = (x, kind, sc, flip) => this.add.image(x, GROUND_Y + 8, `tree-${kind}`)
+      .setOrigin(0.5, 1).setScale(sc).setFlipX(flip);
+    for (let x = rnd.between(700, 900); x < BOY_X - 300; x += rnd.between(gap[0], gap[1])) {   // start spot stays clear
+      tree(x, rnd.pick(BG.treeKinds), rnd.realInRange(scale[0], scale[1]), rnd.frac() < 0.5);
+    }
+    tree(BOY_X + 230, 'gulmohar', 0.8, true);     // a flowering tree framing the ending
+  }
+
+  updateBackground() {
+    const cx = this.cameras.main.scrollX;
+    this.landscape.tilePositionX = (cx * BG.landscapeScroll) / this.landscapeScale;
+    const t = this.time.now / 1000;
+    const wrap = VIEW_W + 600;
+    for (const c of this.cloudSprites) {
+      c.x = Phaser.Math.Wrap(c.baseX - cx * c.parallax + t * c.drift, 0, wrap) - 300;
+    }
   }
 
   // Big on-screen buttons. Instead of per-button events, every finger is checked each frame
@@ -355,6 +398,7 @@ class MainScene extends Phaser.Scene {
   }
 
   update() {
+    if (this.ready) this.updateBackground();
     if (!this.ready || this.won) {
       if (this.won) this.player.setVelocityX(0);
       return;
@@ -398,12 +442,6 @@ class MainScene extends Phaser.Scene {
       p.play('idle', true);
       p.anims.timeScale = 1;
     }
-
-    // parallax
-    const cx = this.cameras.main.scrollX;
-    this.clouds.tilePositionX = cx * 0.1 + this.time.now * 0.01;
-    this.far.tilePositionX = cx * 0.25;
-    this.near.tilePositionX = cx * 0.5;
   }
 }
 
